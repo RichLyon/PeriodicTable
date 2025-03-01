@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Periodic Table</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #61dafb;
+            text-shadow: 0 0 10px rgba(97, 218, 251, 0.5);
+        }
+        
+        .loading, .error {
+            font-size: 1.5rem;
+            margin-top: 50px;
+        }
+        
+        .loading {
+            color: #61dafb;
+        }
+        
+        .error {
+            color: #ff6b6b;
+        }
+        
+        .table-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 30px;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        
+        .table-row {
+            display: flex;
+            margin-bottom: 4px;
+        }
+        
+        .element-cell, .empty-cell {
+            width: 70px;
+            height: 70px;
+            margin: 2px;
+        }
+        
+        .empty-cell {
+            background-color: transparent;
+        }
+        
+        .element-cell {
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .element-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+        
+        .atomic-number {
+            font-size: 10px;
+            text-align: left;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .symbol {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin: auto 0;
+        }
+        
+        .name {
+            font-size: 8px;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .mass {
+            font-size: 8px;
+            text-align: right;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .element-details {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            max-width: 800px;
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            display: flex;
+            flex-direction: row;
+            z-index: 100;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        
+        .info-section {
+            flex: 1;
+            padding-right: 20px;
+        }
+        
+        .visual-section {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .element-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .element-symbol {
+            font-size: 48px;
+            font-weight: bold;
+            margin-right: 15px;
+            color: #61dafb;
+        }
+        
+        .element-name {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .element-name-text {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .element-atomic-number {
+            font-size: 16px;
+            color: #aaa;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .label {
+            font-weight: bold;
+            color: #aaa;
+        }
+        
+        .value {
+            color: #fff;
+        }
+        
+        .description {
+            margin-top: 15px;
+            line-height: 1.5;
+            color: #ddd;
+        }
+        
+        .bohr-model {
+            width: 300px;
+            height: 300px;
+        }
+        
+        @media (max-width: 768px) {
+            .element-details {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .info-section {
+                padding-right: 0;
+                padding-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactive Periodic Table</h1>
+    
+    <div id="app">
+        <div id="loading" class="loading">Loading periodic table data...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="table-container" class="table-container" style="display: none;"></div>
+        <div id="element-details" class="element-details" style="display: none;"></div>
+    </div>
+    
+    <script>
+        // DOM elements
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error');
+        const tableContainerEl = document.getElementById('table-container');
+        const elementDetailsEl = document.getElementById('element-details');
+        
+        // State
+        let elementsData = [];
+        let categories = {};
+        let layout = [];
+        let selectedElement = null;
+        
+        // Fetch data from API
+        async function fetchData() {
+            try {
+                const response = await fetch('http://localhost:5000/api/elements');
+                const data = await response.json();
+                
+                elementsData = data.elements;
+                categories = data.categories;
+                layout = data.layout;
+                
+                renderPeriodicTable();
+                
+                loadingEl.style.display = 'none';
+                tableContainerEl.style.display = 'flex';
+            } catch (err) {
+                console.error('Error fetching data:', err);
+                loadingEl.style.display = 'none';
+                errorEl.textContent = 'Failed to load periodic table data. Please try again later.';
+                errorEl.style.display = 'block';
+            }
+        }
+        
+        // Render the periodic table
+        function renderPeriodicTable() {
+            // Create a map of elements by atomic number for easy lookup
+            const elementsMap = elementsData.reduce((acc, element) => {
+                acc[element.atomic_number] = element;
+                return acc;
+            }, {});
+            
+            // Clear the container
+            tableContainerEl.innerHTML = '';
+            
+            // Create rows and cells
+            layout.forEach((row, rowIndex) => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'table-row';
+                
+                row.forEach((atomicNumber, colIndex) => {
+                    if (atomicNumber === 0) {
+                        const emptyCell = document.createElement('div');
+                        emptyCell.className = 'empty-cell';
+                        rowEl.appendChild(emptyCell);
+                        return;
+                    }
+                    
+                    const element = elementsMap[atomicNumber];
+                    if (!element) {
+                        const emptyCell = document.createElement('div');
+                        emptyCell.className = 'empty-cell';
+                        rowEl.appendChild(emptyCell);
+                        return;
+                    }
+                    
+                    const cellEl = document.createElement('div');
+                    cellEl.className = 'element-cell';
+                    cellEl.style.backgroundColor = categories[element.category] || '#333';
+                    
+                    cellEl.innerHTML = `
+                        <div class="atomic-number">${element.atomic_number}</div>
+                        <div class="symbol">${element.symbol}</div>
+                        <div class="name">${element.name}</div>
+                        <div class="mass">${element.atomic_mass.toFixed(2)}</div>
+                    `;
+                    
+                    cellEl.addEventListener('mouseenter', () => handleElementHover(element));
+                    cellEl.addEventListener('mouseleave', handleElementLeave);
+                    
+                    rowEl.appendChild(cellEl);
+                });
+                
+                tableContainerEl.appendChild(rowEl);
+            });
+        }
+        
+        // Handle element hover
+        function handleElementHover(element) {
+            selectedElement = element;
+            renderElementDetails();
+        }
+        
+        // Handle element leave
+        function handleElementLeave() {
+            selectedElement = null;
+            elementDetailsEl.style.display = 'none';
+        }
+        
+        // Render element details
+        function renderElementDetails() {
+            if (!selectedElement) {
+                elementDetailsEl.style.display = 'none';
+                return;
+            }
+            
+            elementDetailsEl.innerHTML = `
+                <div class="info-section">
+                    <div class="element-header">
+                        <div class="element-symbol">${selectedElement.symbol}</div>
+                        <div class="element-name">
+                            <div class="element-name-text">${selectedElement.name}</div>
+                            <div class="element-atomic-number">Atomic Number: ${selectedElement.atomic_number}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-grid">
+                        <div class="label">Atomic Mass:</div>
+                        <div class="value">${selectedElement.atomic_mass} u</div>
+                        
+                        <div class="label">Category:</div>
+                        <div class="value">${selectedElement.category.charAt(0).toUpperCase() + selectedElement.category.slice(1)}</div>
+                        
+                        <div class="label">Electron Configuration:</div>
+                        <div class="value">${selectedElement.electron_configuration}</div>
+                    </div>
+                    
+                    <div class="description">${selectedElement.description}</div>
+                </div>
+                
+                <div class="visual-section">
+                    <canvas id="bohr-model" class="bohr-model" width="300" height="300"></canvas>
+                </div>
+            `;
+            
+            elementDetailsEl.style.display = 'flex';
+            
+            // Draw Bohr model
+            drawBohrModel();
+        }
+        
+        // Draw Bohr model
+        function drawBohrModel() {
+            if (!selectedElement) return;
+            
+            const canvas = document.getElementById('bohr-model');
+            const ctx = canvas.getContext('2d');
+            const { width, height } = canvas;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Center of the atom
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            // Draw nucleus
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff5722';
+            ctx.fill();
+            ctx.strokeStyle = '#ff8a65';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw element symbol in nucleus
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(selectedElement.symbol, centerX, centerY);
+            
+            // Draw electron shells
+            const shells = selectedElement.electron_shells;
+            const maxShells = shells.length;
+            const maxRadius = Math.min(width, height) / 2 - 10;
+            const shellSpacing = maxRadius / maxShells;
+            
+            shells.forEach((electronCount, shellIndex) => {
+                const shellRadius = (shellIndex + 1) * shellSpacing;
+                
+                // Draw shell orbit
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, shellRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(97, 218, 251, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Draw electrons on this shell
+                const angleStep = (Math.PI * 2) / electronCount;
+                
+                for (let i = 0; i < electronCount; i++) {
+                    const angle = i * angleStep;
+                    const electronX = centerX + Math.cos(angle) * shellRadius;
+                    const electronY = centerY + Math.sin(angle) * shellRadius;
+                    
+                    // Draw electron
+                    ctx.beginPath();
+                    ctx.arc(electronX, electronY, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#61dafb';
+                    ctx.fill();
+                    
+                    // Add glow effect
+                    const gradient = ctx.createRadialGradient(
+                        electronX, electronY, 0,
+                        electronX, electronY, 8
+                    );
+                    gradient.addColorStop(0, 'rgba(97, 218, 251, 0.8)');
+                    gradient.addColorStop(1, 'rgba(97, 218, 251, 0)');
+                    
+                    ctx.beginPath();
+                    ctx.arc(electronX, electronY, 8, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+            });
+            
+            // Add animation
+            let rotation = 0;
+            function animate() {
+                rotation += 0.005;
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, width, height);
+                
+                // Draw nucleus
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff5722';
+                ctx.fill();
+                ctx.strokeStyle = '#ff8a65';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Draw element symbol in nucleus
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(selectedElement.symbol, centerX, centerY);
+                
+                // Draw electron shells with rotation
+                shells.forEach((electronCount, shellIndex) => {
+                    const shellRadius = (shellIndex + 1) * shellSpacing;
+                    
+                    // Draw shell orbit
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, shellRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(97, 218, 251, 0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    
+                    // Draw electrons on this shell with rotation
+                    const angleStep = (Math.PI * 2) / electronCount;
+                    const shellRotation = rotation * (maxShells - shellIndex) / 2; // Outer shells rotate faster
+                    
+                    for (let i = 0; i < electronCount; i++) {
+                        const angle = i * angleStep + shellRotation;
+                        const electronX = centerX + Math.cos(angle) * shellRadius;
+                        const electronY = centerY + Math.sin(angle) * shellRadius;
+                        
+                        // Draw electron
+                        ctx.beginPath();
+                        ctx.arc(electronX, electronY, 5, 0, Math.PI * 2);
+                        ctx.fillStyle = '#61dafb';
+                        ctx.fill();
+                        
+                        // Add glow effect
+                        const gradient = ctx.createRadialGradient(
+                            electronX, electronY, 0,
+                            electronX, electronY, 8
+                        );
+                        gradient.addColorStop(0, 'rgba(97, 218, 251, 0.8)');
+                        gradient.addColorStop(1, 'rgba(97, 218, 251, 0)');
+                        
+                        ctx.beginPath();
+                        ctx.arc(electronX, electronY, 8, 0, Math.PI * 2);
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+                    }
+                });
+                
+                if (selectedElement) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Initialize
+        fetchData();
+    </script>
+</body>
+</html>
